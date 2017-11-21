@@ -144,6 +144,9 @@ class DMD
   //Move the maquee accross by amount
   boolean stepMarquee( int amountX, int amountY);
 
+  //Move a horizontal segment smoothly
+  boolean stepSplitMarquee(int topRow, int bottomRow,int StartColumn);
+	
   //Clear the screen in DMD RAM
   void clearScreen( byte bNormal );
 
