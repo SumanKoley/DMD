@@ -45,7 +45,7 @@ DMD::DMD(byte panelsWide, byte panelsHigh)
     SPI.begin();		// probably don't need this since it inits the port pins only, which we do just below with the appropriate DMD interface setup
     SPI.setBitOrder(MSBFIRST);	//
     SPI.setDataMode(SPI_MODE0);	// CPOL=0, CPHA=0
-    SPI.setClockDivider(SPI_CLOCK_DIV4);	// system clock / 4 = 4MHz SPI CLK to shift registers. If using a short cable, can put SPI_CLOCK_DIV2 here for 2x faster updates
+    SPI.setClockDivider(SPI_CLOCK_DIV2);	// system clock / 4 = 4MHz SPI CLK to shift registers. If using a short cable, can put SPI_CLOCK_DIV2 here for 2x faster updates
 
     digitalWrite(PIN_DMD_A, LOW);	// 
     digitalWrite(PIN_DMD_B, LOW);	// 
@@ -242,6 +242,46 @@ boolean DMD::stepMarquee(int amountX, int amountY)
     return ret;
 }
 
+boolean DMD::stepSplitMarquee(int topRow, int bottomRow,int StartColumn)
+{
+  boolean ret=false;
+  marqueeOffsetX += -1;  // only scroll horizontally, 1 place left
+  if (marqueeOffsetX-StartColumn < -marqueeWidth) { // if text has scrolled off the screen
+    marqueeOffsetX = DMD_PIXELS_ACROSS * DisplaysWide; // set up to scroll again from the far right
+    drawFilledBox(StartColumn, topRow, ((7*32-StartColumn)/32)*DMD_PIXELS_ACROSS-1, bottomRow, GRAPHICS_INVERSE); // clear the scroll rows
+    ret=true; // indicates that this scroll has completed
+  }
+
+// This is the main change from the original function.
+// It splits the left shift task into rows and bytes within a row to allow rows to be identified
+// and treated separately.
+  for (int row=topRow ;row<=bottomRow; row++) { // loop for each row in the scroll area
+    for (int byteInRow=(StartColumn/8); byteInRow<DisplaysWide*4; byteInRow++) { // loop for each byte within a row (4 per DMD across)
+      int thisIndex = (DisplaysTotal*4)*(row%16) + (4*DisplaysWide*(row/16)) + byteInRow; //calculate index into screen buffer
+      if ((byteInRow%(DisplaysWide*4)) == (DisplaysWide*4) -1) {  // if it's the last byte in a row
+        bDMDScreenRAM[thisIndex]=(bDMDScreenRAM[thisIndex]<<1)+1;
+        // shift bits left, and puts a '1' in last position (a '1' = LED OFF)
+   
+      } else {                                            // if it's NOT the last byte in a row
+        bDMDScreenRAM[thisIndex]=(bDMDScreenRAM[thisIndex]<<1) + 
+                    ((bDMDScreenRAM[thisIndex+1] & 0x80) >>7);
+        // shift bits left as well as the shifting the MSB of the next byte into the LSB
+      }
+    }
+  }
+  // Redraw last char on screen
+  // required because
+  int strWidth=marqueeOffsetX;
+  for (byte i=0; i < marqueeLength; i++) {
+    int wide = charWidth(marqueeText[i]);
+    if (strWidth+wide >= DisplaysWide*DMD_PIXELS_ACROSS) {
+      drawChar(strWidth, marqueeOffsetY,marqueeText[i],GRAPHICS_NORMAL);
+      return ret;
+    }
+    strWidth += wide+1;
+  }
+  return ret;
+}
 
 /*--------------------------------------------------------------------------------------
  Clear the screen in DMD RAM
